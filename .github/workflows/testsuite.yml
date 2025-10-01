@@ -11,7 +11,7 @@ on:
       gcc_repo_url:
         description: 'GCC submodule upstream URL (e.g., https://gcc.gnu.org/git/gcc.git)'
         required: true
-        default: 'https://github.com/ZhongyaoChen/gcc.git'
+        default: 'https:/github/ZhongyaoChen/gcc.git'
         type: string
       gcc_commit:
         description: 'GCC submodule commit hash (e.g., a1b2c3d)'
@@ -21,7 +21,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 小时超时
+    timeout-minutes: 360
 
     env:
       RISCV: ${{ github.workspace }}/install
@@ -34,12 +34,25 @@ jobs:
       with:
         submodules: true
 
-    - name: Update GCC submodule
+    - name: Validate and Update GCC submodule
       run: |
+        echo "Setting GCC submodule URL to ${{ github.event.inputs.gcc_repo_url }}"
         git submodule set-url gcc "${{ github.event.inputs.gcc_repo_url }}"
+        echo "Verifying commit ${{ github.event.inputs.gcc_commit }} exists in ${{ github.event.inputs.gcc_repo_url }}"
+        git ls-remote "${{ github.event.inputs.gcc_repo_url }}" "${{ github.event.inputs.gcc_commit }}" | grep "${{ github.event.inputs.gcc_commit }}" || {
+          echo "Error: Commit ${{ github.event.inputs.gcc_commit }} not found in ${{ github.event.inputs.gcc_repo_url }}"
+          exit 1
+        }
+        echo "Cleaning GCC submodule state"
+        git submodule deinit -f gcc || true
+        git rm --cached gcc || true
         git submodule update --init --recursive gcc
         cd gcc
-        git checkout "${{ github.event.inputs.gcc_commit }}"
+        echo "Checking out GCC commit ${{ github.event.inputs.gcc_commit }}"
+        git checkout "${{ github.event.inputs.gcc_commit }}" || {
+          echo "Error: Failed to checkout commit ${{ github.event.inputs.gcc_commit }}"
+          exit 1
+        }
         git submodule update --init --recursive
         cd ..
 
@@ -66,7 +79,7 @@ jobs:
     - name: Configure Toolchain
       run: |
         mkdir -p ${{ env.RISCV }} ${{ env.DISTDIR }}
-        ./configure --prefix=${{ env.RISCV }} --with-arch=rv64gcv --with-abi=lp64d --enable-qemu-system
+        ./configure --prefix=${{ env.RISCV }} --with-arch=rv64gcv --with-abi=lp64d --enable-qemu-system --enable-languages=c
 
     - name: Build Toolchain
       run: |
